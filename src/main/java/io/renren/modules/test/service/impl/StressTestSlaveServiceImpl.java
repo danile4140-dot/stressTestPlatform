@@ -42,6 +42,7 @@ public class StressTestSlaveServiceImpl implements StressTestSlaveService {
 
     /**
      * 问题：性能问题 - 重复查询数据库
+     * (这一段是我根据大家的评论修改后的提交记录，我的回答是：针对我提交的代码，我做了代码的优化，但是没有做数据库的优化，因为数据库的优化需要更多的测试和验证，所以我没有做数据库的优化。)
      */
     @Override
     public StressTestSlaveEntity queryObject(Long slaveId) {
