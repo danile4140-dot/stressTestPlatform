@@ -1,12 +1,23 @@
 package io.renren.modules.test.service.impl;
 
-import io.renren.common.exception.RRException;
-import io.renren.modules.test.dao.StressTestReportsDao;
-import io.renren.modules.test.entity.StressTestReportsEntity;
-import io.renren.modules.test.handler.ReportCreateResultHandler;
-import io.renren.modules.test.jmeter.report.LocalReportGenerator;
-import io.renren.modules.test.service.StressTestReportsService;
-import io.renren.modules.test.utils.StressTestUtils;
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.RandomAccessFile;
+import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
 import org.apache.commons.exec.CommandLine;
 import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.PumpStreamHandler;
@@ -19,14 +30,13 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.*;
-import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import io.renren.common.exception.RRException;
+import io.renren.modules.test.dao.StressTestReportsDao;
+import io.renren.modules.test.entity.StressTestReportsEntity;
+import io.renren.modules.test.handler.ReportCreateResultHandler;
+import io.renren.modules.test.jmeter.report.LocalReportGenerator;
+import io.renren.modules.test.service.StressTestReportsService;
+import io.renren.modules.test.utils.StressTestUtils;
 
 @Service("stressTestReportsService")
 public class StressTestReportsServiceImpl implements StressTestReportsService {
@@ -71,9 +81,9 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
             StressTestReportsEntity stressTestReport = queryObject(reportId);
             String casePath = stressTestUtils.getCasePath();
             String reportName = stressTestReport.getReportName();
-            //csv结果文件路径
+            // csv结果文件路径
             String csvPath = casePath + File.separator + reportName;
-            //测试报告文件目录
+            // 测试报告文件目录
             String reportPath = csvPath.substring(0, csvPath.lastIndexOf("."));
             File reportPathFile = new File(reportPath);
             FileUtils.deleteQuietly(reportPathFile);
@@ -102,7 +112,7 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
     public void deleteReportCSV(StressTestReportsEntity stressCaseReports) {
         String casePath = stressTestUtils.getCasePath();
         String reportName = stressCaseReports.getReportName();
-        //csv结果文件路径
+        // csv结果文件路径
         String csvPath = casePath + File.separator + reportName;
 
         // 为了FileNotFoundException，找不到说明已经删除
@@ -110,17 +120,10 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
     }
 
     public void deleteReportZip(StressTestReportsEntity stressCaseReports) {
-        String casePath = stressTestUtils.getCasePath();
-        String reportName = stressCaseReports.getReportName();
-        //csv结果文件路径
-        String csvPath = casePath + File.separator + reportName;
-        //测试报告文件目录
-        String reportPathDir = csvPath.substring(0, csvPath.lastIndexOf("."));
-        //zip文件名
-        String reportZipPath = reportPathDir + ".zip";
-
-        // 为了FileNotFoundException，找不到说明已经删除
-        FileUtils.deleteQuietly(new File(reportZipPath));
+        FileUtils.deleteQuietly(new File(stressCaseReports.getReportName() + ".zip"));
+        stressCaseReports.setFileSize(0L);
+        update(stressCaseReports);
+        logger.info("删除报告[ID:{}]关联zip文件完成", stressCaseReports.getCaseId());
     }
 
     /**
@@ -130,18 +133,18 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
     public FileSystemResource getZipFile(StressTestReportsEntity reportsEntity) throws IOException {
         String casePath = stressTestUtils.getCasePath();
         String reportName = reportsEntity.getReportName();
-        //csv结果文件路径
+        // csv结果文件路径
         String csvPath = casePath + File.separator + reportName;
-        //测试报告文件目录
+        // 测试报告文件目录
         String reportPathDir = csvPath.substring(0, csvPath.lastIndexOf("."));
 
-        //如果测试报告文件目录不存在，直接打断
+        // 如果测试报告文件目录不存在，直接打断
         File reportDir = new File(reportPathDir);
         if (!reportDir.exists()) {
             throw new RRException("请先生成测试报告！");
         }
 
-        //zip文件名
+        // zip文件名
         String reportZipPath = reportPathDir + ".zip";
 
         FileSystemResource zipFileResource = new FileSystemResource(reportZipPath);
@@ -208,14 +211,14 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
         String casePath = stressTestUtils.getCasePath();
         String reportName = stressTestReport.getReportName();
 
-        //csv结果文件路径
+        // csv结果文件路径
         String csvPath = casePath + File.separator + reportName;
-        //测试报告文件目录
+        // 测试报告文件目录
         String reportPathDir = csvPath.substring(0, csvPath.lastIndexOf("."));
 
         logger.error("报告名称:" + reportName + "  报告csv路径:" + csvPath);
 
-        //设置开始执行命令生成报告
+        // 设置开始执行命令生成报告
         stressTestReport.setStatus(StressTestUtils.RUNNING);
         update(stressTestReport);
 
@@ -224,7 +227,7 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
         } catch (Exception e) {
             logger.error("修复csv文件遇到了问题！", e);
         }
-        //如果存在则清空
+        // 如果存在则清空
         FileUtils.deleteQuietly(new File(reportPathDir));
 
         if (stressTestUtils.isMasterGenerateReport()) {
@@ -246,7 +249,7 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
             stressTestReport.setStatus(StressTestUtils.RUN_SUCCESS);
             update(stressTestReport);
         } catch (Throwable e) {
-            //保存状态，执行出现异常
+            // 保存状态，执行出现异常
             stressTestReport.setStatus(StressTestUtils.RUN_ERROR);
             update(stressTestReport);
             throw new RRException("执行生成测试报告脚本异常！", e);
@@ -257,7 +260,7 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
      * 使用Jmeter_home中的命令生成测试报告。
      */
     public void generateReportByScript(StressTestReportsEntity stressTestReport, String csvPath, String reportPathDir) {
-        //开始执行命令行
+        // 开始执行命令行
         String jmeterHomeBin = stressTestUtils.getJmeterHomeBin();
         String jmeterExc = stressTestUtils.getJmeterExc();
 
@@ -276,8 +279,8 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
         cmdLine.setSubstitutionMap(map);
 
         DefaultExecutor executor = new DefaultExecutor();
-        //非阻塞方式运行脚本命令，不耽误前端的操作。
-        //流操作在executor执行源码中已经关闭。
+        // 非阻塞方式运行脚本命令，不耽误前端的操作。
+        // 流操作在executor执行源码中已经关闭。
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ByteArrayOutputStream errorStream = new ByteArrayOutputStream();
         PumpStreamHandler streamHandler = new PumpStreamHandler(outputStream, errorStream);
@@ -286,13 +289,12 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
 
         try {
             // 自定义的钩子程序
-            ReportCreateResultHandler resultHandler =
-                    new ReportCreateResultHandler(stressTestReport,
-                            this, outputStream, errorStream);
+            ReportCreateResultHandler resultHandler = new ReportCreateResultHandler(stressTestReport,
+                    this, outputStream, errorStream);
             // 执行脚本命令
             executor.execute(cmdLine, resultHandler);
         } catch (IOException e) {
-            //保存状态，执行出现异常
+            // 保存状态，执行出现异常
             stressTestReport.setStatus(StressTestUtils.RUN_ERROR);
             update(stressTestReport);
             throw new RRException("执行生成测试报告脚本异常！", e);
@@ -329,18 +331,18 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
             String line;
             while ((line = reader.readLine()) != null) {
                 // 判断条件，根据自己的情况书写，会删除所有符合条件的行
-//                String[] lines = line.split(",");
-//                if (lines.length != lineLength) {
-//                    continue;
-//                }
+                // String[] lines = line.split(",");
+                // if (lines.length != lineLength) {
+                // continue;
+                // }
                 if (line.contains("\0")) {
                     continue;
                 }
                 writer.println(line);
                 writer.flush();
             }
-//            reader.close();
-//            writer.close();
+            // reader.close();
+            // writer.close();
 
             // 删除老文件，使用_back文件替换旧的可能存在问题的文件。
             FileUtils.deleteQuietly(file);
@@ -364,8 +366,8 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
             fixReportUnknownLine(fileName);
             return;
         }
-        //使用临时的shell文件来执行sed命令，因为Linux环境下直接执行sed命令不成功。
-        String[] strs = {"sed -i '/\\x0/d' " + fileName};
+        // 使用临时的shell文件来执行sed命令，因为Linux环境下直接执行sed命令不成功。
+        String[] strs = { "sed -i '/\\x0/d' " + fileName };
         File temp = stressTestUtils.createShell(strs);
         String result = stressTestUtils.runShell(temp.getAbsolutePath());
 
@@ -413,8 +415,8 @@ public class StressTestReportsServiceImpl implements StressTestReportsService {
                 }
             }
 
-            //关闭回收
-//            raf.close();
+            // 关闭回收
+            // raf.close();
             return theLastSec.length;
         } catch (FileNotFoundException e) {
             stressTestReport.setStatus(StressTestUtils.NO_FILE);
