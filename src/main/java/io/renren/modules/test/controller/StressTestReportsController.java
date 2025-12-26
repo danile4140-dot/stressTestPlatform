@@ -1,5 +1,25 @@
 package io.renren.modules.test.controller;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import io.renren.common.annotation.SysLog;
 import io.renren.common.utils.PageUtils;
 import io.renren.common.utils.Query;
@@ -8,19 +28,6 @@ import io.renren.common.validator.ValidatorUtils;
 import io.renren.modules.test.entity.StressTestReportsEntity;
 import io.renren.modules.test.service.StressTestReportsService;
 import io.renren.modules.test.utils.StressTestUtils;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 压力测试报告
@@ -36,16 +43,16 @@ public class StressTestReportsController {
     /**
      * 测试报告列表
      */
-    @RequestMapping("/list")
+    @GetMapping("/list")
     @RequiresPermissions("test:stress:reportsList")
     public R list(@RequestParam Map<String, Object> params) {
-        //查询列表数据
+        // 查询列表数据
         Query query = new Query(StressTestUtils.filterParms(params));
-        List<StressTestReportsEntity> reportList = stressTestReportsService.queryList(query);
         int total = stressTestReportsService.queryTotal(query);
+        List<StressTestReportsEntity> reportList = total > 0 ? stressTestReportsService.queryList(query)
+                : Collections.emptyList();
 
         PageUtils pageUtil = new PageUtils(reportList, total, query.getLimit(), query.getPage());
-
         return R.ok().put("page", pageUtil);
     }
 
@@ -103,19 +110,19 @@ public class StressTestReportsController {
         for (Long reportId : reportIds) {
             StressTestReportsEntity stressTestReport = stressTestReportsService.queryObject(reportId);
 
-            //首先判断，如果file_size为0或者空，说明没有结果文件，直接报错打断。
-//            if (stressTestReport.getFileSize() == 0L || stressTestReport.getFileSize() == null) {
-//                throw new RRException("找不到测试结果文件，无法生成测试报告！");
-//            }
-            //如果测试报告文件目录已经存在，说明生成过测试报告，直接打断
-//            if (StressTestUtils.RUNNING.equals(stressTestReport.getStatus())) {
-//                throw new RRException("请等待测试报告生成结束！");
-//            }
+            // 首先判断，如果file_size为0或者空，说明没有结果文件，直接报错打断。
+            // if (stressTestReport.getFileSize() == 0L || stressTestReport.getFileSize() ==
+            // null) {
+            // throw new RRException("找不到测试结果文件，无法生成测试报告！");
+            // }
+            // 如果测试报告文件目录已经存在，说明生成过测试报告，直接打断
+            // if (StressTestUtils.RUNNING.equals(stressTestReport.getStatus())) {
+            // throw new RRException("请等待测试报告生成结束！");
+            // }
             stressTestReportsService.createReport(stressTestReport);
         }
         return R.ok();
     }
-
 
     /**
      * 下载测试报告zip包
@@ -123,7 +130,8 @@ public class StressTestReportsController {
     @SysLog("下载测试报告zip包")
     @RequestMapping("/downloadReport/{reportId}")
     @RequiresPermissions("test:stress:reportDownLoad")
-    public ResponseEntity<InputStreamResource> downloadReport(@PathVariable("reportId") Long reportId) throws IOException {
+    public ResponseEntity<InputStreamResource> downloadReport(@PathVariable("reportId") Long reportId)
+            throws IOException {
         StressTestReportsEntity reportsEntity = stressTestReportsService.queryObject(reportId);
         FileSystemResource zipFile = stressTestReportsService.getZipFile(reportsEntity);
 
