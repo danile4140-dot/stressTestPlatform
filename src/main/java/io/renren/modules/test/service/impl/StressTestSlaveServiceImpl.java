@@ -260,7 +260,8 @@ public class StressTestSlaveServiceImpl implements StressTestSlaveService {
         try {
             Thread.sleep(100);
         } catch (InterruptedException e) {
-            // 问题：代码质量问题 - 没有恢复中断状态
+            Thread.currentThread().interrupt();
+            logger.warn("Thread interrupted during sleep", e);
         }
     }
 
@@ -300,9 +301,21 @@ public class StressTestSlaveServiceImpl implements StressTestSlaveService {
         }
 
         // 问题：逻辑问题 - 状态更新可能不一致（如果上面抛异常，这里还会执行）
-        // 更新数据库
-        slave.setStatus(status);
-        update(slave);
+        try {
+            runOrDownSlave(slave, status);
+            // Update database only on success
+            slave.setStatus(status);
+            update(slave);
+        } catch (RRException e) {
+            slave.setStatus(StressTestUtils.RUN_ERROR);
+            update(slave);
+            throw e;
+        } catch (Exception e) {
+            slave.setStatus(StressTestUtils.RUN_ERROR);
+            update(slave);
+            logger.error("Unknown exception", e);
+            throw new RRException("Failed to update slave status", e);
+        }
     }
 
     /**
